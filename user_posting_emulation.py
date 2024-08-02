@@ -1,32 +1,65 @@
+import awsdb
 import requests
 from time import sleep
 import random
 from multiprocessing import Process
 import boto3
 import json
-import sqlalchemy
 from sqlalchemy import text
-
+import datetime
 
 random.seed(100)
 
+new_connector = awsdb.AWSDBConnector()
 
-class AWSDBConnector:
+def send_data_to_s3(request_type, invoke_url, dict_results):
 
-    def __init__(self):
+    """
+    This functions get sends the data (dict_results) to each kafka topics using the API Invoke URL
 
-        self.HOST = "xxxxxx"
-        self.USER = 'xxxxxxx'
-        self.PASSWORD = 'xxxxxx'
-        self.DATABASE = 'xxxxx'
-        self.PORT = 'xxxxx'
+    Parameters:
+    -----------
+
+        request_type: str
+            the type of API request made
+
+        invoke_url: str
+            the url to send the data to
+
+        dict_results: dict
+            the data
+
+    Returns:
+    --------
+        None
+
+    Raises:
+    -------
+        requests.exceptions.RequestException: any errors relating to requests.
+    """
+
+    for key, value in dict_results.items():
+        if type(value) == datetime.datetime:
+            dict_results[key] = dict_results[key].strftime("%Y-%m-%d %H:%M:%S")
         
-    def create_db_connector(self):
-        engine = sqlalchemy.create_engine(f"mysql+pymysql://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DATABASE}?charset=utf8mb4")
-        return engine
+    payload = json.dumps({
+    "records": [
+        {
+        #Data should be send as pairs of column_name:value, with different columns separated by commas       
+        "value": dict_results
+        }
+    ]
+})
+    print(payload)
+    headers = {'Content-Type': 'application/vnd.kafka.json.v2+json'}
+    try:
+        response = requests.request(request_type, invoke_url, headers=headers, data=payload)
+        print(response.status_code)
+    except requests.exceptions.RequestException as errex: 
+        print("Exception request") 
+    
 
 
-new_connector = AWSDBConnector()
 
 
 def run_infinite_post_data_loop():
@@ -54,10 +87,11 @@ def run_infinite_post_data_loop():
             
             for row in user_selected_row:
                 user_result = dict(row._mapping)
-            
-            print(pin_result)
-            print(geo_result)
-            print(user_result)
+
+            send_data_to_s3("POST", "https://qynzmaevn3.execute-api.us-east-1.amazonaws.com/streaming_test/topics/1232252d77df.pin", pin_result)
+            send_data_to_s3("POST", "https://qynzmaevn3.execute-api.us-east-1.amazonaws.com/streaming_test/topics/1232252d77df.geo", geo_result)
+            send_data_to_s3("POST", "https://qynzmaevn3.execute-api.us-east-1.amazonaws.com/streaming_test/topics/1232252d77df.user", user_result)
+
 
 
 if __name__ == "__main__":
